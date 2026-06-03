@@ -1,18 +1,9 @@
 # BB-Agent — Bug Bounty Pipeline
-### Qwen 2.5 7B + Bash | Inspired by Bronxi's lessons on Bugcrowd
+### Qwen 2.5 7B + Bash 
 
 ---
 
-## Philosophy
 
-> *"AI in bug bounty is an amplifier of proven personal skills — not a substitute."*
-> — Bronxi, Bugcrowd (2026)
-
-This pipeline follows Bronxi's hard-won lesson:
-- **Bash does the scanning** (fast, reliable, proven tools)
-- **Qwen analyzes the output** (reading, pattern matching, filtering)
-- **Critic step filters false positives** (the #1 problem with AI agents)
-- **You verify before submitting** (always)
 
 ---
 
