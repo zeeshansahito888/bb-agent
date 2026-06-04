@@ -1,0 +1,9 @@
+https://docs.api.cliniko.com/runtime/chunks/GraphQLDocs-73P2KXZM.js
+https://status.cliniko.com/subscriptions/incident.json
+https://status.cliniko.com/subscriptions/new-email
+https://status.cliniko.com/subscriptions/new-sms
+https://status.cliniko.com/subscriptions/track_attempt
+https://status.cliniko.com/subscriptions/verify-email-otp
+https://status.cliniko.com/subscriptions/verify-otp
+https://status.cliniko.com/subscriptions/webhook.json
+https://subscriptions.statuspage.io/slack_authentication/kickoff?page_code=njcmcp9gx7rh
