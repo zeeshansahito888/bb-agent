@@ -62,9 +62,45 @@
       "suggested_test": "test introspection, IDOR via queries",
       "vuln_class": "graphql/websocket",
       "auto": true
+    },
+    {
+      "target": "https://www.facebook.com/profile.php?id=100069966975776",
+      "reason": "Potential IDOR as it involves a specific user profile.",
+      "tech": "N/A",
+      "suggested_test": "Test for read-only or write access to the profile information.",
+      "vuln_class": "IDOR"
+    },
+    {
+      "target": "https://api.au1.cliniko.com/v1/appointments/",
+      "reason": "API endpoint with ID params, likely unauthenticated access.",
+      "tech": "N/A",
+      "suggested_test": "Try to fetch or modify appointment data without authentication.",
+      "vuln_class": "IDOR"
+    },
+    {
+      "target": "https://api.au1.cliniko.com/v1/appointments/1",
+      "reason": "API endpoint with ID params, likely unauthenticated access.",
+      "tech": "N/A",
+      "suggested_test": "Try to fetch or modify appointment data without authentication.",
+      "vuln_class": "IDOR"
     }
   ],
-  "p2": [],
-  "kill_list": [],
-  "recommended_first": "Parse error \u2014 check recon output"
+  "p2": [
+    {
+      "target": "https://api.au1.cliniko.com/v1/appointments?page=2&per_page=100",
+      "reason": "Interesting endpoint for pagination and potentially unauthenticated access.",
+      "suggested_test": "Test for large per_page values to see if it returns more data than expected."
+    }
+  ],
+  "kill_list": [
+    {
+      "target": "https://a-a-podiatrists.cliniko.com",
+      "reason": "CDN host, likely not a direct target."
+    },
+    {
+      "target": "http://0.cliniko.com",
+      "reason": "Static page or redirect, not a direct target."
+    }
+  ],
+  "recommended_first": "Start with the IDOR candidates and API endpoints as they are high priority based on the ranking rules."
 }
