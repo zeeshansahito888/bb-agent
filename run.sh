@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────
+# run.sh — Full Bug Bounty Pipeline
+# Phase 1 (recon) → Phase 2 (analyze) → Ranker → Phase 3 (report)
+# + Auto-mines results into MemPalace
+#
+# Usage: ./run.sh <domain> [scope]
+# ─────────────────────────────────────────────────────────────────
+
 set -euo pipefail
 
 TARGET="${1:-}"
@@ -17,7 +25,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RECON_DIR="${SCRIPT_DIR}/recon/${TARGET}"
 
-RED='\033[0;31m'; GRN='\033[0;32m'; YLW='\033[0;33d'
+RED='\033[0;31m'; GRN='\033[0;32m'; YLW='\033[0;33m'
 BLU='\033[0;34m'; BLD='\033[1m'; RST='\033[0m'
 
 banner() {
@@ -35,9 +43,11 @@ banner() {
 step() { echo ""; echo -e "${YLW}${BLD}━━━ $* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RST}"; }
 ok()   { echo -e "  ${GRN}✓${RST} $*"; }
 fail() { echo -e "  ${RED}✗${RST} $*"; }
+warn() { echo -e "  ${YLW}⚠${RST}  $*"; }
 
 check_deps() {
   step "Checking dependencies"
+
   if curl -sf http://localhost:11434/api/tags &>/dev/null; then
     ok "ollama running"
     if curl -sf http://localhost:11434/api/tags | grep -q "qwen2.5:7b"; then
@@ -59,11 +69,34 @@ check_deps() {
   fi
 
   echo ""
-  for tool in subfinder httpx-toolkit dnsx nuclei katana assetfinder waybackurls gf ffuf; do
+  for tool in subfinder httpx-toolkit dnsx nuclei katana assetfinder waybackurls gf ffuf mempalace; do
     command -v "$tool" &>/dev/null \
       && echo -e "  ${GRN}✓${RST} $tool" \
-      || echo -e "  ${YLW}⚠${RST}  $tool (optional — run install.sh)"
+      || echo -e "  ${YLW}⚠${RST}  $tool (optional)"
   done
+}
+
+mine_mempalace() {
+  step "MemPalace — Mining findings into memory"
+  if command -v mempalace &>/dev/null; then
+    cd "$SCRIPT_DIR"
+
+    # Mine recon output
+    echo -e "  Mining recon/${TARGET}/..."
+    mempalace mine "${RECON_DIR}" 2>/dev/null \
+      && ok "Recon results mined" \
+      || warn "Recon mine failed"
+
+    # Mine hunt memory
+    echo -e "  Mining hunt-memory/..."
+    mempalace mine "${SCRIPT_DIR}/hunt-memory" 2>/dev/null \
+      && ok "Hunt memory mined" \
+      || warn "Hunt memory mine failed"
+
+    ok "MemPalace updated — future hunts will benefit from these findings"
+  else
+    warn "mempalace not installed — run: pipx install mempalace"
+  fi
 }
 
 banner
@@ -83,6 +116,9 @@ python3 "${SCRIPT_DIR}/recon_ranker.py" "$TARGET" "$RECON_DIR"
 step "Phase 3 — Report Generation"
 python3 "${SCRIPT_DIR}/phase3_report.py" "$TARGET" "$RECON_DIR"
 
+# Auto-mine into MemPalace
+mine_mempalace
+
 END=$(date +%s)
 ELAPSED=$((END - START))
 
@@ -93,6 +129,16 @@ echo -e "${GRN}${BLD}╚══════════════════�
 echo ""
 echo -e "  ${BLD}Output:${RST} $RECON_DIR/"
 echo ""
+
+# Show output files
+echo "  Files generated:"
+ls -lh "$RECON_DIR/"*.{txt,md,json} 2>/dev/null \
+  | awk '{printf "    %-45s %s\n", $NF, $5}' || true
+
+echo ""
 echo -e "  ${YLW}⚠  Verify ALL findings manually before submitting${RST}"
 echo -e "  ${BLD}Time:${RST} $((ELAPSED/60))m $((ELAPSED%60))s"
+echo ""
+echo -e "  ${BLU}Next hunt will remember:${RST}"
+echo -e "    mempalace search \"$TARGET findings\""
 echo ""
