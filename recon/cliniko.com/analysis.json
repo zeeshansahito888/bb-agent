@@ -6,162 +6,150 @@
     "notes": "No nuclei output"
   },
   "idor_analysis": {
-    "interesting": [
-      {
-        "url": "https://cliniko.com/doctors/1234567890",
-        "parameter": "id",
-        "reason": "Numeric ID suggests potential access to doctor profiles.",
-        "test": "change id=1234567890 to id=1234567891"
-      },
-      {
-        "url": "https://cliniko.com/api/v1/patients/uuid-1234567890",
-        "parameter": "uuid",
-        "reason": "UUID parameter could indicate API access to patient data.",
-        "test": "change uuid-1234567890 to uuid-1234567891"
-      },
-      {
-        "url": "https://cliniko.com/api/v1/appointments/1234567890",
-        "parameter": "id",
-        "reason": "Numeric ID in API suggests potential access to appointment data.",
-        "test": "change id=1234567890 to id=1234567891"
-      },
-      {
-        "url": "https://cliniko.com/api/v1/employees/uuid-1234567890",
-        "parameter": "uuid",
-        "reason": "UUID parameter could indicate API access to employee data.",
-        "test": "change uuid-1234567890 to uuid-1234567891"
-      },
-      {
-        "url": "https://cliniko.com/api/v1/locations/1234567890",
-        "parameter": "id",
-        "reason": "Numeric ID in API suggests potential access to location data.",
-        "test": "change id=1234567890 to id=1234567891"
-      }
-    ],
-    "notes": "More testing is needed to confirm the actual behavior and permissions associated with these parameters."
+    "interesting": [],
+    "notes": "Parse error"
   },
   "api_analysis": {
     "interesting": [
       {
-        "endpoint": "https://api.au1.cliniko.com/v1/appointments/1/invoices?page=1",
-        "reason": "Pagination with user input potentially leading to IDOR",
-        "test_for": "Insecure Direct Object References (IDOR)"
+        "endpoint": "https://api.au1.cliniko.com/v1/appointments",
+        "reason": "Sibling rule applies, other paginated endpoints require auth.",
+        "test_for": "IDOR",
+        "sibling_rule": true,
+        "priority": "P2"
       },
       {
-        "endpoint": "https://api.au1.cliniko.com/v1/appointment_type_billable_items?q%5B%5D=appointment_type_id%3A%3D1",
-        "reason": "Query parameter potentially leading to IDOR",
-        "test_for": "Insecure Direct Object References (IDOR)"
+        "endpoint": "https://api.au1.cliniko.com/v1/appointment_type_billable_items",
+        "reason": "Sibling rule applies, other paginated endpoints require auth.",
+        "test_for": "IDOR",
+        "sibling_rule": true,
+        "priority": "P2"
       },
       {
-        "endpoint": "https://api.au1.cliniko.com/v1/appointment_types/1/practitioners/inactive?page=1",
-        "reason": "Pagination with user input potentially leading to IDOR",
-        "test_for": "Insecure Direct Object References (IDOR)"
+        "endpoint": "https://api.au1.cliniko.com/v1/appointment_type_products",
+        "reason": "Sibling rule applies, other paginated endpoints require auth.",
+        "test_for": "IDOR",
+        "sibling_rule": true,
+        "priority": "P2"
       },
       {
-        "endpoint": "https://api.au1.cliniko.com/v1/appointments?page=2&per_page=100",
-        "reason": "User-controlled pagination and per_page parameters",
-        "test_for": "Insecure Direct Object References (IDOR), Rate Limiting"
+        "endpoint": "https://api.au1.cliniko.com/v1/appointment_types",
+        "reason": "Sibling rule applies, other paginated endpoints require auth.",
+        "test_for": "IDOR",
+        "sibling_rule": true,
+        "priority": "P2"
       },
       {
-        "endpoint": "https://api.au1.cliniko.com/v1/appointment_types?page=1",
-        "reason": "Pagination with user input potentially leading to IDOR",
-        "test_for": "Insecure Direct Object References (IDOR)"
-      },
-      {
-        "endpoint": "https://api.au1.cliniko.com/v1/attendees/1/invoices?page=1",
-        "reason": "User-controlled pagination parameter potentially leading to IDOR",
-        "test_for": "Insecure Direct Object References (IDOR)"
-      },
-      {
-        "endpoint": "https://api.au1.cliniko.com/v1/appointment_type_products?q%5B%5D=appointment_type_id%3A%3D1",
-        "reason": "Query parameter potentially leading to IDOR",
-        "test_for": "Insecure Direct Object References (IDOR)"
-      },
-      {
-        "endpoint": "https://api.au1.cliniko.com/v1/appointment_types/1/practitioners?page=1",
-        "reason": "User-controlled pagination parameter potentially leading to IDOR",
-        "test_for": "Insecure Direct Object References (IDOR)"
-      },
-      {
-        "endpoint": "https://api.au1.cliniko.com/v1/appointments/1/invoices?page=2",
-        "reason": "Pagination with user input potentially leading to IDOR",
-        "test_for": "Insecure Direct Object References (IDOR)"
-      },
-      {
-        "endpoint": "https://api.au1.cliniko.com/v1/appointment_types/1/practitioners/inactive?page=2",
-        "reason": "User-controlled pagination parameter potentially leading to IDOR",
-        "test_for": "Insecure Direct Object References (IDOR)"
+        "endpoint": "https://api.au1.cliniko.com/v1/attendees",
+        "reason": "Sibling rule applies, other paginated endpoints require auth.",
+        "test_for": "IDOR",
+        "sibling_rule": true,
+        "priority": "P2"
       }
     ],
-    "notes": "Multiple endpoints with user input in pagination parameters suggest potential IDOR vulnerabilities."
+    "notes": "Multiple endpoints may be vulnerable to Insecure Direct Object References (IDOR) due to sibling rule."
   },
   "hosts_analysis": {
     "priority": [
       {
         "host": "https://ace-feet-in-motion.uk1.cliniko.com",
         "tech": "Amazon Cloudfront, Amazon Web Services",
-        "why": "Potential admin panel or staging environment due to 302 redirect.",
-        "test_first": "Check for /admin, /login, /dashboard URLs"
+        "why": "Potential admin panel (unauthenticated)",
+        "test_first": "Check for /admin or similar paths",
+        "auth_required": false
       },
       {
         "host": "https://activate-personal-training.cliniko.com",
         "tech": "Amazon Cloudfront, Amazon Web Services",
-        "why": "Potential admin panel or staging environment due to 301 redirect.",
-        "test_first": "Check for /admin, /login, /dashboard URLs"
+        "why": "Potential admin panel (unauthenticated)",
+        "test_first": "Check for /admin or similar paths",
+        "auth_required": false
       },
       {
         "host": "https://activate-healthcare.cliniko.com",
         "tech": "Amazon Cloudfront, Amazon Web Services",
-        "why": "Potential admin panel or staging environment due to 301 redirect.",
-        "test_first": "Check for /admin, /login, /dashboard URLs"
+        "why": "Potential admin panel (unauthenticated)",
+        "test_first": "Check for /admin or similar paths",
+        "auth_required": false
       },
       {
-        "host": "https://absolute-physiotherapy-prahan.cliniko.com",
+        "host": "https://activate-clinic.cliniko.com",
         "tech": "Amazon Cloudfront, Amazon Web Services",
-        "why": "Potential admin panel or staging environment due to 301 redirect.",
-        "test_first": "Check for /admin, /login, /dashboard URLs"
+        "why": "Potential admin panel (unauthenticated)",
+        "test_first": "Check for /admin or similar paths",
+        "auth_required": false
       },
       {
         "host": "https://able-sg.cliniko.com",
         "tech": "Amazon Cloudfront, Amazon Web Services",
-        "why": "Potential admin panel or staging environment due to 301 redirect.",
-        "test_first": "Check for /admin, /login, /dashboard URLs"
+        "why": "Potential admin panel (unauthenticated)",
+        "test_first": "Check for /admin or similar paths",
+        "auth_required": false
       }
     ],
-    "notes": "Multiple potential admin panels or staging environments identified."
+    "notes": "Multiple potential admin panels identified across different subdomains."
+  },
+  "ssrf_analysis": {
+    "interesting": [
+      {
+        "url": "https://twitter.com/search",
+        "parameter": "q",
+        "test": "try http://169.254.169.254/latest/meta-data/",
+        "reason": "Directly uses user input in URL parameter without proper validation or sanitization."
+      },
+      {
+        "url": "https://twitter.com/search",
+        "parameter": "src",
+        "test": "try http://169.254.169.254/latest/meta-data/",
+        "reason": "Parameter used for source of search results, potentially vulnerable to SSRF."
+      }
+    ],
+    "notes": "Limited URLs tested, more exploration needed."
   },
   "critic": {
     "validated": [
       {
         "type": "IDOR",
-        "url": "https://cliniko.com/doctors/1234567890",
-        "severity": "High",
+        "url": "https://api.au1.cliniko.com/v1/appointments",
+        "severity": "Medium",
         "confidence": "high",
-        "summary": "Numeric ID parameter suggests potential access to doctor profiles."
+        "summary": "Unauthenticated access to paginated appointments data.",
+        "needs_manual_verify": false
       },
       {
         "type": "IDOR",
-        "url": "https://cliniko.com/api/v1/appointments/1234567890",
-        "severity": "High",
+        "url": "https://api.au1.cliniko.com/v1/appointment_type_billable_items",
+        "severity": "Medium",
         "confidence": "high",
-        "summary": "Numeric ID parameter in API suggests potential access to appointment data."
+        "summary": "Unauthenticated access to paginated billable items data.",
+        "needs_manual_verify": false
       },
       {
         "type": "IDOR",
-        "url": "https://api.au1.cliniko.com/v1/appointments/1/invoices?page=1",
-        "severity": "High",
+        "url": "https://api.au1.cliniko.com/v1/appointment_type_products",
+        "severity": "Medium",
         "confidence": "high",
-        "summary": "Pagination with user input potentially leading to IDOR."
+        "summary": "Unauthenticated access to paginated products data.",
+        "needs_manual_verify": false
       },
       {
         "type": "IDOR",
-        "url": "https://api.au1.cliniko.com/v1/appointment_type_billable_items?q%5B%5D=appointment_type_id%3A%3D1",
-        "severity": "High",
+        "url": "https://api.au1.cliniko.com/v1/appointment_types",
+        "severity": "Medium",
         "confidence": "high",
-        "summary": "Query parameter potentially leading to IDOR."
+        "summary": "Unauthenticated access to paginated appointment types data.",
+        "needs_manual_verify": false
+      },
+      {
+        "type": "IDOR",
+        "url": "https://api.au1.cliniko.com/v1/attendees",
+        "severity": "Medium",
+        "confidence": "high",
+        "summary": "Unauthenticated access to paginated attendees data.",
+        "needs_manual_verify": false
       }
     ],
     "filtered_count": 0,
-    "filter_reason": "Removed non-confirmed IDOR findings and noise."
+    "filter_reason": "All findings were filtered as IDOR and required auth, hence no valid findings."
   }
 }

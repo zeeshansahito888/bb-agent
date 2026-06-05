@@ -62,40 +62,9 @@
       "suggested_test": "test introspection, IDOR via queries",
       "vuln_class": "graphql/websocket",
       "auto": true
-    },
-    {
-      "target": "https://api.au1.cliniko.com/v1/appointments",
-      "reason": "API endpoint with pagination parameters, potential IDOR or data leakage.",
-      "tech": "API",
-      "suggested_test": "Test for IDOR by manipulating the 'page' and 'per_page' query parameters without authentication.",
-      "vuln_class": "IDOR"
-    },
-    {
-      "target": "https://api.au1.cliniko.com/v1/appointments/1/invoices",
-      "reason": "API endpoint with pagination parameters, potential IDOR or data leakage.",
-      "tech": "API",
-      "suggested_test": "Test for IDOR by manipulating the 'page' query parameter without authentication.",
-      "vuln_class": "IDOR"
     }
   ],
-  "p2": [
-    {
-      "target": "https://www.facebook.com/profile.php?id=100069966975776",
-      "reason": "Potential IDOR if the profile can be accessed without proper authorization.",
-      "suggested_test": "Attempt to access other user profiles by changing the 'id' parameter."
-    }
-  ],
-  "kill_list": [
-    {
-      "target": "https://a-a-podiatrists.cliniko.com",
-      "reason": "301 redirect, likely CDN or static content, not a direct target for exploitation.",
-      "tech": "CDN"
-    },
-    {
-      "target": "http://0.cliniko.com",
-      "reason": "301 redirect, likely CDN or static content, not a direct target for exploitation.",
-      "tech": "CDN"
-    }
-  ],
-  "recommended_first": "Start with the API endpoints as they are more likely to contain sensitive data and have potential IDOR vulnerabilities."
+  "p2": [],
+  "kill_list": [],
+  "recommended_first": "Parse error \u2014 check recon output"
 }

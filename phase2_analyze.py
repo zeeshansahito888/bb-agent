@@ -93,7 +93,7 @@ def analyze_idor(idor_raw, target):
     if not idor_raw.strip():
         return {"interesting": [], "notes": "No IDOR candidates"}
 
-    idor_ref = load_skill("web2-vuln-classes/SKILL.md", max_lines=60)
+    idor_ref = ""  # disabled - 7B model hallucinates skill examples as real findings
 
     prompt = f"""You are a bug bounty researcher reviewing IDOR candidates for {target}.
 
@@ -132,7 +132,7 @@ def analyze_api(api_raw, target):
     if not api_raw.strip():
         return {"interesting": [], "notes": "No API endpoints"}
 
-    vuln_ref = load_skill("web2-vuln-classes/SKILL.md", max_lines=60)
+    vuln_ref = ""  # disabled - 7B model hallucinates skill examples as real findings
 
     prompt = f"""You are a bug bounty researcher reviewing API endpoints for {target}.
 

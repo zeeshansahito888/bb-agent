@@ -69,9 +69,38 @@ def ask(prompt, label=""):
         max_tokens=2000,
     )
     return r.choices[0].message.content.strip()
+def search_mempalace(query, top=3):
+    import subprocess
+    try:
+        r = subprocess.run(
+            ["mempalace", "search", query, "--results", str(top)],
+            capture_output=True, text=True,
+            cwd="/root/bb-agent", timeout=10
+        )
+        return r.stdout.strip()[:800] if r.stdout.strip() else ""
+    except:
+        return ""
 
 def load_hunt_memory(target):
     memory = {"patterns": [], "previous_tests": [], "successful_techs": []}
+
+    contexts = []
+    for query in [
+        f"IDOR vulnerability API {target}",
+        "bug bounty high severity findings",
+        "SQL injection SSRF bypass",
+    ]:
+        result = search_mempalace(query)
+        if result:
+            contexts.append(result)
+
+    if contexts:
+        print(f"  Memory: MemPalace {len(contexts)} contexts loaded")
+        memory["patterns"] = [{"pattern": "mempalace", "context": c} for c in contexts]
+        return memory
+
+    # JSON fallback
+    print("  Memory: using JSON fallback")
     memory_dir = Path("hunt-memory")
     patterns_file = memory_dir / "patterns.jsonl"
     if patterns_file.exists():
@@ -82,7 +111,7 @@ def load_hunt_memory(target):
     if target_file.exists():
         try:
             data = json.loads(target_file.read_text())
-            memory["previous_tests"]   = data.get("tested_endpoints", [])
+            memory["previous_tests"] = data.get("tested_endpoints", [])
             memory["successful_techs"] = data.get("successful_techs", [])
         except: pass
     return memory
