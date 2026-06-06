@@ -252,8 +252,13 @@ def write_report(target, ranking, memory, stats):
         lines.append(f"- `{item.get('target','?')}` — {item.get('reason','?')}")
 
     lines.append("\n## Memory Context")
-    for p in memory.get("patterns",[])[:5]:
-        lines.append(f"- {p.get('pattern','?')} on {p.get('tech','?')} → {p.get('result','?')}")
+    for p in memory.get("patterns",[])[:3]:
+        ctx = p.get("context","")
+        if ctx:
+            preview = "\n  ".join(ctx.splitlines()[:2])
+            lines.append(f"- {preview}")
+        else:
+            lines.append(f"- {p.get('pattern','?')} on {p.get('tech','?')} → {p.get('result','?')}")
     if not memory.get("patterns"):
         lines.append("No hunt memory yet.")
 
