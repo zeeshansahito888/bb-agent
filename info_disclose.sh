@@ -56,6 +56,9 @@ PATHS=(
 info "Probing ${#PATHS[@]} paths on live hosts..."
 
 COUNT=0
+INTERESTING=0
+CRITICAL=0
+
 while read -r url && [[ $COUNT -lt 20 ]]; do
   for path in "${PATHS[@]}"; do
     full_url="${url}${path}"
@@ -65,7 +68,7 @@ while read -r url && [[ $COUNT -lt 20 ]]; do
       -H "User-Agent: Mozilla/5.0" \
       2>/dev/null || true)
 
-    status=$(echo "$response" | grep "HTTP_STATUS:" | cut -d: -f2)
+    status=$(echo "$response" | grep "HTTP_STATUS:" | cut -d: -f2 | tr -d '[:space:]')
     body=$(echo "$response" | grep -v "HTTP_STATUS:")
 
     if [[ "$status" == "200" || "$status" == "500" ]]; then
@@ -75,6 +78,7 @@ while read -r url && [[ $COUNT -lt 20 ]]; do
         echo "BODY:" >> "$RESPONSES_FILE"
         echo "$body" | head -50 >> "$RESPONSES_FILE"
         echo "---" >> "$RESPONSES_FILE"
+        INTERESTING=$((INTERESTING + 1))
       fi
     fi
 
@@ -85,6 +89,7 @@ while read -r url && [[ $COUNT -lt 20 ]]; do
       echo "STATUS: $status" >> "$RESPONSES_FILE"
       echo "$body" | head -30 >> "$RESPONSES_FILE"
       echo "---" >> "$RESPONSES_FILE"
+      CRITICAL=$((CRITICAL + 1))
     fi
   done
   COUNT=$((COUNT + 1))
@@ -92,11 +97,12 @@ done < "$OUTDIR/live-urls.txt"
 
 ok "Probed $COUNT hosts"
 
-INTERESTING=$(grep -c "^=== URL:" "$RESPONSES_FILE" 2>/dev/null || echo 0)
-CRITICAL=$(grep -c "^=== CRITICAL:" "$RESPONSES_FILE" 2>/dev/null || echo 0)
-
 echo ""
 info "INFO DISCLOSURE COMPLETE"
 info "Hosts: $COUNT | Interesting: $INTERESTING | Critical: $CRITICAL"
-[[ $CRITICAL -gt 0 ]] && crit "CRITICAL hits found — check $RESPONSES_FILE"
+
+if [[ $CRITICAL -gt 0 ]]; then
+  crit "CRITICAL hits found — check $RESPONSES_FILE"
+fi
+
 info "Next: python3 info_analyzer.py $TARGET $OUTDIR"
