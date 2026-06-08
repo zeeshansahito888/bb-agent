@@ -18,26 +18,14 @@ crit() { echo -e "[$(date '+%H:%M:%S')] ${RED}[HIT]${RST}   $*"; }
 
 info "=== SSRF FUZZER ==="
 
-# Auto-generate interactsh URL if not provided
+# Ask for collaborator URL if not provided
 if [[ -z "$COLLAB" ]]; then
-  if command -v interactsh-client &>/dev/null; then
-    info "Generating interactsh URL..."
-    INTERACTSH_OUTPUT=$(interactsh-client \
-      -server https://interact.sh \
-      -n 1 -json 2>/dev/null | head -5)
-    COLLAB=$(echo "$INTERACTSH_OUTPUT" | jq -r '.url' 2>/dev/null | head -1)
-    if [[ -z "$COLLAB" ]]; then
-      warn "interactsh failed — using app.interactsh.com manually"
-      warn "Run: interactsh-client -server https://interact.sh"
-      exit 1
-    fi
-    ok "Collaborator: http://$COLLAB"
-    COLLAB="http://$COLLAB"
-  else
-    warn "interactsh-client not installed"
-    warn "Install: go install github.com/projectdiscovery/interactsh/cmd/interactsh-client@latest"
-    exit 1
-  fi
+  echo ""
+  echo "  Open https://app.interactsh.com OR use Burp Collaborator"
+  echo "  Copy your OOB URL (e.g. abc123.oast.fun)"
+  echo -n "  Paste URL: "
+  read -r COLLAB
+  [[ "$COLLAB" != http* ]] && COLLAB="http://$COLLAB"
 fi
 
 FINDINGS="$OUTDIR/ssrf_fuzzer_findings.txt"
