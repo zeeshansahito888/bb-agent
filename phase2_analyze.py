@@ -219,9 +219,20 @@ Triage reference:
 {report_ref}
 
 Rules:
-- A URL with ?id= is NOT a confirmed IDOR — just a candidate
-- Only keep findings with real concrete evidence
-- Rate each by confidence
+- ONLY report Critical and High severity findings
+- Skip ALL of these:
+  * IDOR candidates (requires manual 2-account verification)
+  * Missing security headers
+  * Directory listing
+  * EOL software without working exploit
+  * Info disclosure without real credentials or secrets
+  * Unconfirmed SQLi candidates
+- KEEP these if confirmed:
+  * SSRF with OOB DNS/HTTP proof
+  * XSS with confirmed execution (reflected or stored)
+  * Subdomain takeover with unclaimed service proof
+  * RCE, auth bypass, hardcoded credentials, exposed API keys
+- If nothing meets bar → return empty validated list
 
 Findings:
 {json.dumps(all_findings, indent=2)[:2000]}

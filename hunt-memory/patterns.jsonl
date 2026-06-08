@@ -3,3 +3,4 @@
 {"pattern": "/graphql introspection enabled", "tech": "graphql", "result": "schema leak leads to IDOR discovery", "date": "2025-01-01"}
 {"pattern": "?file= or ?path= parameter", "tech": "php", "result": "LFI - read /etc/passwd", "date": "2025-01-01"}
 {"pattern": "/api/v1/ endpoints with no auth header check", "tech": "express", "result": "IDOR on user objects", "date": "2025-01-01"}
+{"pattern": "redirect_uri parameter in /connect/register OAuth endpoint", "tech": "cloudfront, viu, oauth", "result": "Blind SSRF confirmed via DNS OOB interaction", "target": "now.com", "date": "2026-06-07", "severity": "High"}
