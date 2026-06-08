@@ -54,12 +54,12 @@ check_deps() {
   if python3 -c "import openai" 2>/dev/null; then
     ok "openai python package"
   else
-    fail "openai not installed — run: pip install openai --break-system-packages"
+    fail "openai not installed"
     exit 1
   fi
 
   echo ""
-  for tool in subfinder httpx-toolkit dnsx nuclei katana assetfinder waybackurls gf ffuf mempalace; do
+  for tool in subfinder httpx-toolkit dnsx nuclei katana assetfinder waybackurls gf ffuf mempalace interactsh-client; do
     command -v "$tool" &>/dev/null \
       && echo -e "  ${GRN}✓${RST} $tool" \
       || echo -e "  ${YLW}⚠${RST}  $tool (optional)"
@@ -67,24 +67,18 @@ check_deps() {
 }
 
 mine_mempalace() {
-  step "MemPalace — Auto-mining findings into memory"
+  step "MemPalace — Auto-mining findings"
   if command -v mempalace &>/dev/null; then
     cd "$SCRIPT_DIR"
-    mempalace mine "${RECON_DIR}" 2>/dev/null \
-      && ok "Recon results mined" \
-      || warn "MemPalace mine failed"
-    mempalace mine "${SCRIPT_DIR}/hunt-memory" 2>/dev/null \
-      && ok "Hunt memory mined" \
-      || warn "Hunt memory mine failed"
-    ok "Future hunts will benefit from these findings"
+    mempalace mine "${RECON_DIR}" 2>/dev/null && ok "Recon mined" || warn "Mine failed"
+    mempalace mine "${SCRIPT_DIR}/hunt-memory" 2>/dev/null && ok "Hunt memory mined" || warn "Mine failed"
   else
-    warn "mempalace not installed — run: pipx install mempalace"
+    warn "mempalace not installed"
   fi
 }
 
 banner
 check_deps
-
 START=$(date +%s)
 
 # ── Phase 1 — Bash Recon ──────────────────────────────────────────
@@ -94,32 +88,32 @@ bash "${SCRIPT_DIR}/phase1_recon.sh" "$TARGET" "${SCRIPT_DIR}/recon"
 # ── Phase 1.5 — Automated Vuln Checks ────────────────────────────
 step "Phase 1.5 — Automated Vuln Checks"
 
-echo -e "\n  ${BLD}[1/4] JS Secret Finder${RST}"
+echo -e "\n  ${BLD}[1/7] Nuclei CVE + OOB (interactsh)${RST}"
+bash "${SCRIPT_DIR}/nuclei_cves.sh" "$TARGET" "$RECON_DIR" || warn "Nuclei CVE failed"
+
+echo -e "\n  ${BLD}[2/7] JS Secret Finder${RST}"
 bash "${SCRIPT_DIR}/js_secrets.sh" "$TARGET" "$RECON_DIR" || warn "JS secrets failed"
 python3 "${SCRIPT_DIR}/js_analyzer.py" "$TARGET" "$RECON_DIR" || warn "JS analyzer failed"
 
-echo -e "\n  ${BLD}[2/4] Security Headers${RST}"
+echo -e "\n  ${BLD}[3/7] Security Headers${RST}"
 bash "${SCRIPT_DIR}/headers_check.sh" "$TARGET" "$RECON_DIR" || warn "Headers check failed"
 python3 "${SCRIPT_DIR}/headers_analyzer.py" "$TARGET" "$RECON_DIR" || warn "Headers analyzer failed"
 
-echo -e "\n  ${BLD}[3/4] Info Disclosure${RST}"
+echo -e "\n  ${BLD}[4/7] Info Disclosure${RST}"
 bash "${SCRIPT_DIR}/info_disclose.sh" "$TARGET" "$RECON_DIR" || warn "Info disclosure failed"
 python3 "${SCRIPT_DIR}/info_analyzer.py" "$TARGET" "$RECON_DIR" || warn "Info analyzer failed"
 
-echo -e "\n  ${BLD}[4/4] Subdomain Takeover${RST}"
+echo -e "\n  ${BLD}[5/7] Subdomain Takeover${RST}"
 bash "${SCRIPT_DIR}/takeover.sh" "$TARGET" "$RECON_DIR" || warn "Takeover check failed"
 
-echo -e "\n  ${BLD}[5/5] Vulnerability Fuzzers${RST}"
-bash "${SCRIPT_DIR}/nuclei_cves.sh" "$TARGET" "$RECON_DIR" || warn "Nuclei CVE failed"
-bash "${SCRIPT_DIR}/sqli_fuzzer.sh" "$TARGET" "$RECON_DIR" || warn "SQLi fuzzer failed"
+echo -e "\n  ${BLD}[6/7] SSRF Fuzzer (interactsh)${RST}"
+bash "${SCRIPT_DIR}/ssrf_fuzzer.sh" "$TARGET" "$RECON_DIR" || warn "SSRF fuzzer failed"
+
+echo -e "\n  ${BLD}[7/7] XSS + SQLi Fuzzers${RST}"
 bash "${SCRIPT_DIR}/xss_fuzzer.sh" "$TARGET" "$RECON_DIR" || warn "XSS fuzzer failed"
+bash "${SCRIPT_DIR}/sqli_fuzzer.sh" "$TARGET" "$RECON_DIR" || warn "SQLi fuzzer failed"
 
 # ── Phase 2 — Qwen Analysis ───────────────────────────────────────
-echo -e "\n  ${BLD}[5/5] Vulnerability Fuzzers${RST}"
-bash "${SCRIPT_DIR}/nuclei_cves.sh" "$TARGET" "$RECON_DIR" || warn "Nuclei CVE failed"
-bash "${SCRIPT_DIR}/sqli_fuzzer.sh" "$TARGET" "$RECON_DIR" || warn "SQLi fuzzer failed"
-bash "${SCRIPT_DIR}/xss_fuzzer.sh" "$TARGET" "$RECON_DIR" || warn "XSS fuzzer failed"
-
 step "Phase 2 — Qwen Analysis"
 python3 "${SCRIPT_DIR}/phase2_analyze.py" "$TARGET" "$RECON_DIR"
 
@@ -144,7 +138,9 @@ echo -e "${GRN}${BLD}╚══════════════════�
 echo ""
 echo -e "  ${BLD}Output:${RST} $RECON_DIR/"
 echo ""
-for f in ranking.md js_findings.json headers_analysis.json info_analysis.json takeover_findings.txt; do
+for f in ranking.md nuclei_cves.txt nuclei_oob.txt js_findings.json \
+          headers_analysis.json info_analysis.json takeover_findings.txt \
+          ssrf_fuzzer_findings.txt xss_fuzzer_findings.txt sqli_fuzzer_findings.txt; do
   fpath="$RECON_DIR/$f"
   if [[ -f "$fpath" ]] && [[ -s "$fpath" ]]; then
     echo -e "  ${GRN}✓${RST} $f ($(wc -l < "$fpath") lines)"
