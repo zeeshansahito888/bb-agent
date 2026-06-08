@@ -109,7 +109,17 @@ python3 "${SCRIPT_DIR}/info_analyzer.py" "$TARGET" "$RECON_DIR" || warn "Info an
 echo -e "\n  ${BLD}[4/4] Subdomain Takeover${RST}"
 bash "${SCRIPT_DIR}/takeover.sh" "$TARGET" "$RECON_DIR" || warn "Takeover check failed"
 
+echo -e "\n  ${BLD}[5/5] Vulnerability Fuzzers${RST}"
+bash "${SCRIPT_DIR}/nuclei_cves.sh" "$TARGET" "$RECON_DIR" || warn "Nuclei CVE failed"
+bash "${SCRIPT_DIR}/sqli_fuzzer.sh" "$TARGET" "$RECON_DIR" || warn "SQLi fuzzer failed"
+bash "${SCRIPT_DIR}/xss_fuzzer.sh" "$TARGET" "$RECON_DIR" || warn "XSS fuzzer failed"
+
 # ── Phase 2 — Qwen Analysis ───────────────────────────────────────
+echo -e "\n  ${BLD}[5/5] Vulnerability Fuzzers${RST}"
+bash "${SCRIPT_DIR}/nuclei_cves.sh" "$TARGET" "$RECON_DIR" || warn "Nuclei CVE failed"
+bash "${SCRIPT_DIR}/sqli_fuzzer.sh" "$TARGET" "$RECON_DIR" || warn "SQLi fuzzer failed"
+bash "${SCRIPT_DIR}/xss_fuzzer.sh" "$TARGET" "$RECON_DIR" || warn "XSS fuzzer failed"
+
 step "Phase 2 — Qwen Analysis"
 python3 "${SCRIPT_DIR}/phase2_analyze.py" "$TARGET" "$RECON_DIR"
 
