@@ -10,36 +10,26 @@ client = OpenAI(base_url=OLLAMA_URL, api_key="ollama")
 
 SKILLS_DIR = Path(__file__).parent / "skills"
 
-def load_skill(skill_path: str, max_lines: int = 150) -> str:
+def load_skill(skill_path, max_lines=60):
     path = SKILLS_DIR / skill_path
-    if not path.exists():
-        return ""
+    if not path.exists(): return ""
     lines = path.read_text(errors="ignore").strip().splitlines()
-    # Skip frontmatter
     start = 0
     if lines and lines[0] == "---":
         for i, l in enumerate(lines[1:], 1):
-            if l == "---":
-                start = i + 1
-                break
-    lines = lines[start:]
-    if len(lines) > max_lines:
-        lines = lines[:max_lines]
-    return "\n".join(lines)
+            if l == "---": start = i + 1; break
+    return "\n".join(lines[start:start+max_lines])
 
 def read_file(path, max_lines=100):
-    if not Path(path).exists():
-        return ""
+    if not Path(path).exists(): return ""
     lines = Path(path).read_text(errors="ignore").strip().splitlines()
     if len(lines) > max_lines:
         return "\n".join(lines[:max_lines]) + f"\n... (+{len(lines)-max_lines} more)"
     return "\n".join(lines)
 
 def extract_json(text):
-    try:
-        return json.loads(text.strip())
-    except:
-        pass
+    try: return json.loads(text.strip())
+    except: pass
     m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
     if m:
         try: return json.loads(m.group(1))
@@ -51,37 +41,30 @@ def extract_json(text):
     return None
 
 def ask(prompt, label=""):
-    if label:
-        print(f"  [LLM] {label}...")
+    if label: print(f"  [LLM] {label}...")
     r = client.chat.completions.create(
         model=MODEL,
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.1,
-        max_tokens=1500,
+        temperature=0.1, max_tokens=1500,
     )
     return r.choices[0].message.content.strip()
 
-def analyze_nuclei(nuclei_raw, target):
-    if not nuclei_raw.strip():
+def analyze_nuclei(nuclei_raw, nuclei_cves, nuclei_oob, target):
+    combined = "\n".join(filter(None, [nuclei_raw, nuclei_cves, nuclei_oob]))
+    if not combined.strip():
         return {"confirmed": [], "false_positives": 0, "notes": "No nuclei output"}
-
-    vuln_ref = load_skill("web2-vuln-classes/SKILL.md", max_lines=80)
-
     prompt = f"""You are a strict bug bounty validator reviewing nuclei output for {target}.
 
-Vuln class reference:
-{vuln_ref}
-
 Nuclei output:
-{nuclei_raw}
+{combined[:2000]}
 
-A finding is VALID only if nuclei matched a real vulnerability template with evidence.
-Informational and tech-detection lines are NOT vulnerabilities.
+VALID: real vulnerability template matches with evidence
+INVALID: tech detection, informational, missing headers
 
 Reply ONLY with JSON:
 {{
   "confirmed": [
-    {{"template": "...", "url": "...", "severity": "...", "evidence": "one line", "vuln_class": "..."}}
+    {{"template": "...", "url": "...", "severity": "...", "evidence": "one line", "oob": true}}
   ],
   "false_positives": 0,
   "notes": "one sentence"
@@ -89,72 +72,107 @@ Reply ONLY with JSON:
     raw = ask(prompt, "Analyzing nuclei output")
     return extract_json(raw) or {"confirmed": [], "false_positives": 0, "notes": "Parse error"}
 
-def analyze_idor(idor_raw, target):
-    if not idor_raw.strip():
-        return {"interesting": [], "notes": "No IDOR candidates"}
+def analyze_sqli_results(sqli_raw, target):
+    if not sqli_raw.strip():
+        return {"confirmed": [], "candidates": [], "notes": "No SQLi fuzzer output"}
+    confirmed = []
+    candidates = []
+    for line in sqli_raw.splitlines():
+        line = line.strip()
+        if line.startswith("SQLI_TIME:"):
+            parts = line.replace("SQLI_TIME:", "").strip()
+            url_match    = re.search(r"(https?://[^\s|]+)", parts)
+            param_match  = re.search(r"param=([^\s|]+)", parts)
+            elapsed_match= re.search(r"elapsed=([^\s|]+)", parts)
+            confirmed.append({
+                "type": "time-based SQLi",
+                "url": url_match.group(1) if url_match else parts,
+                "parameter": param_match.group(1) if param_match else "unknown",
+                "evidence": f"Response delayed {elapsed_match.group(1) if elapsed_match else '5000ms+'} — SLEEP() executed",
+                "severity": "High",
+                "fuzzer_confirmed": True
+            })
+        elif line.startswith("SQLI_ERROR:"):
+            parts = line.replace("SQLI_ERROR:", "").strip()
+            url_match   = re.search(r"(https?://[^\s|]+)", parts)
+            param_match = re.search(r"param=([^\s|]+)", parts)
+            candidates.append({
+                "type": "error-based SQLi candidate",
+                "url": url_match.group(1) if url_match else parts,
+                "parameter": param_match.group(1) if param_match else "unknown",
+                "evidence": "SQL error string in response",
+                "severity": "High",
+                "fuzzer_confirmed": False,
+                "needs_manual_verify": True
+            })
+    return {
+        "confirmed": confirmed,
+        "candidates": candidates,
+        "notes": f"{len(confirmed)} time-based confirmed, {len(candidates)} error candidates"
+    }
 
-    idor_ref = ""  # disabled - 7B model hallucinates skill examples as real findings
+def analyze_ssrf_results(ssrf_raw, target):
+    if not ssrf_raw.strip():
+        return {"tested": [], "notes": "No SSRF fuzzer output"}
+    tested = []
+    for line in ssrf_raw.splitlines():
+        if line.startswith("TESTED:"):
+            parts = line.replace("TESTED:", "").strip()
+            url_match    = re.search(r"(https?://[^\s\[]+)", parts)
+            param_match  = re.search(r"param=([^\s\]]+)", parts)
+            status_match = re.search(r"status=(\d+)", parts)
+            if url_match:
+                tested.append({
+                    "url": url_match.group(1),
+                    "parameter": param_match.group(1) if param_match else "unknown",
+                    "status": status_match.group(1) if status_match else "unknown",
+                    "note": "Check OOB collaborator for DNS/HTTP hit to confirm"
+                })
+    return {
+        "tested": tested[:10],
+        "notes": f"{len(tested)} URLs tested — check Burp Collaborator/interactsh for OOB hits"
+    }
 
-    prompt = f"""You are a bug bounty researcher reviewing IDOR candidates for {target}.
-
-IDOR methodology reference:
-{idor_ref}
-
-URLs with ID parameters:
-{idor_raw}
-
-Apply the IDOR testing checklist from the reference.
-Pick TOP 5 most promising. Prefer:
-- Numeric IDs in API endpoints
-- UUID parameters
-- /api/v1/ endpoints (check if /v2/ has auth that /v1/ lacks)
-- GraphQL node queries
-- WebSocket messages with client-supplied IDs
-
-Reply ONLY with JSON:
-{{
-  "interesting": [
-    {{
-      "url": "...",
-      "parameter": "...",
-      "idor_variant": "V1/V2/V3/etc",
-      "reason": "one line",
-      "test": "exact test to perform",
-      "chain_potential": "IDOR+Read/IDOR+Write/IDOR+Admin"
-    }}
-  ],
-  "notes": "one sentence"
-}}"""
-    raw = ask(prompt, "Analyzing IDOR candidates")
-    return extract_json(raw) or {"interesting": [], "notes": "Parse error"}
+def analyze_xss(xss_raw, target):
+    if not xss_raw.strip():
+        return {"confirmed": [], "notes": "No XSS fuzzer output"}
+    confirmed = []
+    for line in xss_raw.splitlines():
+        if line.startswith("XSS_REFLECTED:"):
+            parts = line.replace("XSS_REFLECTED:", "").strip()
+            url_match     = re.search(r"(https?://[^\s|]+)", parts)
+            param_match   = re.search(r"param=([^\s|]+)", parts)
+            payload_match = re.search(r"payload=(.+)", parts)
+            confirmed.append({
+                "type": "Reflected XSS",
+                "url": url_match.group(1) if url_match else parts,
+                "parameter": param_match.group(1) if param_match else "unknown",
+                "payload": payload_match.group(1) if payload_match else "unknown",
+                "severity": "High",
+                "fuzzer_confirmed": True,
+                "needs_manual_verify": True
+            })
+    return {
+        "confirmed": confirmed,
+        "notes": f"{len(confirmed)} reflected XSS hits — verify in browser"
+    }
 
 def analyze_api(api_raw, target):
     if not api_raw.strip():
         return {"interesting": [], "notes": "No API endpoints"}
-
-    vuln_ref = ""  # disabled - 7B model hallucinates skill examples as real findings
-
     prompt = f"""You are a bug bounty researcher reviewing API endpoints for {target}.
 
-Vuln reference (focus on mass assignment, JWT, CORS, auth bypass):
-{vuln_ref}
-
 API endpoints:
-{api_raw}
+{api_raw[:1500]}
 
-Apply the sibling rule: if 9 endpoints have auth, the 10th probably doesn't.
-Look for: admin endpoints, export endpoints, delete endpoints missing auth.
+Apply sibling rule: if /api/admin/users has auth, /api/admin/export probably doesn't.
+Look for: admin, export, delete, file upload, auth endpoints, old versions.
+Only URL containing {target} domain.
 
 Reply ONLY with JSON:
 {{
   "interesting": [
-    {{
-      "endpoint": "...",
-      "reason": "...",
-      "test_for": "IDOR/Auth/XSS/SQLi/Mass-Assignment/etc",
-      "sibling_rule": true/false,
-      "priority": "P1/P2"
-    }}
+    {{"endpoint": "...", "reason": "...", "test_for": "...", "priority": "P1/P2"}}
   ],
   "notes": "one sentence"
 }}"""
@@ -164,78 +182,39 @@ Reply ONLY with JSON:
 def analyze_hosts(hosts_raw, target):
     if not hosts_raw.strip():
         return {"priority": [], "notes": "No live hosts"}
-
     prompt = f"""You are a bug bounty researcher reviewing live hosts for {target}.
 
 Live hosts:
-{hosts_raw}
+{hosts_raw[:1500]}
 
-Rank TOP 5 most interesting. Consider:
-- Admin panels (P1 if unauthed, P2 if authed)
-- Dev/staging environments (less hardened)
-- APIs with version numbers
-- Non-standard ports (8080, 3000, 9200, 8443)
-- Old tech stacks
+Rank TOP 5. Consider: admin panels, dev/staging, APIs, old tech, non-standard ports.
+Only include hosts containing {target} domain.
 
 Reply ONLY with JSON:
 {{
   "priority": [
-    {{"host": "...", "tech": "...", "why": "one line", "test_first": "what to test", "auth_required": true/false}}
+    {{"host": "...", "tech": "...", "why": "...", "test_first": "..."}}
   ],
   "notes": "one sentence"
 }}"""
     raw = ask(prompt, "Prioritizing live hosts")
     return extract_json(raw) or {"priority": [], "notes": "Parse error"}
 
-def analyze_ssrf(ssrf_raw, target):
-    if not ssrf_raw.strip():
-        return {"interesting": [], "notes": "No SSRF candidates"}
-
-    prompt = f"""You are a bug bounty researcher reviewing SSRF candidates for {target}.
-
-URLs with URL/redirect parameters:
-{ssrf_raw}
-
-Pick TOP 3 most promising SSRF candidates.
-SSRF is valuable if it can reach: cloud metadata (169.254.169.254), internal services, or exfil data.
-
-Reply ONLY with JSON:
-{{
-  "interesting": [
-    {{"url": "...", "parameter": "...", "test": "try http://169.254.169.254/latest/meta-data/", "reason": "..."}}
-  ],
-  "notes": "one sentence"
-}}"""
-    raw = ask(prompt, "Analyzing SSRF candidates")
-    return extract_json(raw) or {"interesting": [], "notes": "Parse error"}
-
 def critic_check(all_findings, target):
-    report_ref = load_skill("triage-validation/SKILL.md", max_lines=60)
-
+    triage_ref = load_skill("triage-validation/SKILL.md", max_lines=60)
     prompt = f"""You are a senior bug bounty triager for {target}.
-Review findings and CUT noise. Be skeptical.
 
 Triage reference:
-{report_ref}
+{triage_ref}
 
-Rules:
-- ONLY report Critical and High severity findings
-- Skip ALL of these:
-  * IDOR candidates (requires manual 2-account verification)
-  * Missing security headers
-  * Directory listing
-  * EOL software without working exploit
-  * Info disclosure without real credentials or secrets
-  * Unconfirmed SQLi candidates
-- KEEP these if confirmed:
-  * SSRF with OOB DNS/HTTP proof
-  * XSS with confirmed execution (reflected or stored)
-  * Subdomain takeover with unclaimed service proof
-  * RCE, auth bypass, hardcoded credentials, exposed API keys
-- If nothing meets bar → return empty validated list
+STRICT RULES:
+- fuzzer_confirmed: true  → keep if High/Critical
+- fuzzer_confirmed: false → only keep with very strong evidence
+- REPORT: Critical (RCE, SQLi+data, ATO), High (confirmed SSRF OOB, confirmed XSS, time-based SQLi)
+- SKIP: IDOR, missing headers, directory listing, unconfirmed anything, info disclosure without credentials
 
 Findings:
-{json.dumps(all_findings, indent=2)[:2000]}
+{json.dumps(all_findings, indent=2)[:2500]}
 
 Reply ONLY with JSON:
 {{
@@ -243,8 +222,9 @@ Reply ONLY with JSON:
     {{
       "type": "...",
       "url": "...",
-      "severity": "Critical/High/Medium/Low",
+      "severity": "Critical/High",
       "confidence": "high/medium/low",
+      "fuzzer_confirmed": true/false,
       "summary": "one line",
       "needs_manual_verify": true/false
     }}
@@ -255,59 +235,109 @@ Reply ONLY with JSON:
     raw = ask(prompt, "Running critic (false-positive filter)")
     return extract_json(raw) or {"validated": [], "filtered_count": 0, "filter_reason": "Parse error"}
 
+def widen_gf_patterns(out_dir, target):
+    urls_file = out_dir / "urls.txt"
+    if not urls_file.exists(): return
+    urls = urls_file.read_text(errors="ignore").splitlines()
+    total = len(urls)
+
+    idor_file = out_dir / "idor-candidates.txt"
+    ssrf_file = out_dir / "ssrf-candidates.txt"
+    idor_count = len(open(idor_file, errors="ignore").readlines()) if idor_file.exists() else 0
+    ssrf_count = len(open(ssrf_file, errors="ignore").readlines()) if ssrf_file.exists() else 0
+
+    if idor_count < 5 and total > 100:
+        print(f"  [GREP] Widening IDOR patterns ({idor_count} found, {total} URLs)...")
+        wider = [u for u in urls if re.search(
+            r"[?&](id|uid|user|account|profile|order|invoice|ticket|item|doc|file|"
+            r"record|object|uuid|guid|key|ref|token|member|customer|client|pid|rid|eid)[\[=]",
+            u, re.I
+        )]
+        with open(idor_file, "a") as f:
+            for u in wider[:200]: f.write(u + "\n")
+        print(f"  [GREP] Added {len(wider)} IDOR candidates")
+
+    if ssrf_count < 3 and total > 100:
+        print(f"  [GREP] Widening SSRF patterns ({ssrf_count} found)...")
+        wider = [u for u in urls if re.search(
+            r"[?&](url|uri|path|dest|destination|redirect|next|return|returnurl|callback|"
+            r"src|source|target|host|domain|endpoint|api|feed|fetch|load|proxy|request|"
+            r"site|link|ref|image|img|pdf|download|file|open|window|data|service|server)=",
+            u, re.I
+        )]
+        with open(ssrf_file, "a") as f:
+            for u in wider[:100]: f.write(u + "\n")
+        print(f"  [GREP] Added {len(wider)} SSRF candidates")
+
 def main():
     target  = sys.argv[1] if len(sys.argv) > 1 else "example.com"
     out_dir = Path(sys.argv[2]) if len(sys.argv) > 2 else Path(f"recon/{target}")
 
-    print(f"\n[*] Phase 2 — Analysis (with skill files)")
+    print(f"\n[*] Phase 2 — Analysis")
     print(f"[*] Target  : {target}")
     print(f"[*] Out dir : {out_dir}")
+    skill_check = load_skill("triage-validation/SKILL.md", 5)
+    print(f"[*] Skills  : {'loaded' if skill_check else 'not found'}\n")
 
-    # Check skills loaded
-    vuln_skill = load_skill("web2-vuln-classes/SKILL.md", 10)
-    print(f"[*] Skills  : {'loaded' if vuln_skill else 'NOT FOUND — run from ~/bb-agent/'}\n")
+    # Widen gf patterns if needed
+    widen_gf_patterns(out_dir, target)
 
-    nuclei_raw = read_file(out_dir / "nuclei.txt",           80)
-    idor_raw   = read_file(out_dir / "idor-candidates.txt",  50)
-    api_raw    = read_file(out_dir / "api-endpoints.txt",    80)
-    hosts_raw  = read_file(out_dir / "live-hosts.txt",       50)
-    ssrf_raw   = read_file(out_dir / "ssrf-candidates.txt",  30)
+    # Load all inputs
+    nuclei_raw  = read_file(out_dir / "nuclei.txt",               80)
+    nuclei_cves = read_file(out_dir / "nuclei_cves.txt",          80)
+    nuclei_oob  = read_file(out_dir / "nuclei_oob.txt",           40)
+    api_raw     = read_file(out_dir / "api-endpoints.txt",        80)
+    hosts_raw   = read_file(out_dir / "live-hosts.txt",           50)
+    sqli_raw    = read_file(out_dir / "sqli_fuzzer_findings.txt", 200)
+    ssrf_raw    = read_file(out_dir / "ssrf_fuzzer_findings.txt", 200)
+    xss_raw     = read_file(out_dir / "xss_fuzzer_findings.txt",  200)
 
-    nuclei_result = analyze_nuclei(nuclei_raw, target)
-    print(f"  → Nuclei confirmed: {len(nuclei_result.get('confirmed',[]))}")
+    # Run analysis
+    nuclei_result = analyze_nuclei(nuclei_raw, nuclei_cves, nuclei_oob, target)
+    print(f"  → Nuclei confirmed  : {len(nuclei_result.get('confirmed',[]))}")
 
-    idor_result = analyze_idor(idor_raw, target)
-    print(f"  → IDOR candidates: {len(idor_result.get('interesting',[]))}")
+    sqli_result = analyze_sqli_results(sqli_raw, target)
+    print(f"  → SQLi confirmed    : {len(sqli_result.get('confirmed',[]))} time-based, "
+          f"{len(sqli_result.get('candidates',[]))} error candidates")
+
+    ssrf_result = analyze_ssrf_results(ssrf_raw, target)
+    print(f"  → SSRF tested       : {len(ssrf_result.get('tested',[]))} URLs")
+
+    xss_result = analyze_xss(xss_raw, target)
+    print(f"  → XSS reflected     : {len(xss_result.get('confirmed',[]))}")
 
     api_result = analyze_api(api_raw, target)
-    print(f"  → Interesting APIs: {len(api_result.get('interesting',[]))}")
+    print(f"  → Interesting APIs  : {len(api_result.get('interesting',[]))}")
 
     hosts_result = analyze_hosts(hosts_raw, target)
-    print(f"  → Priority hosts: {len(hosts_result.get('priority',[]))}")
+    print(f"  → Priority hosts    : {len(hosts_result.get('priority',[]))}")
 
-    ssrf_result = analyze_ssrf(ssrf_raw, target)
-    print(f"  → SSRF candidates: {len(ssrf_result.get('interesting',[]))}")
-
+    # Critic pass
     combined = {
-        "nuclei": nuclei_result.get("confirmed", []),
-        "idor":   idor_result.get("interesting", []),
-        "api":    api_result.get("interesting", []),
-        "hosts":  hosts_result.get("priority", []),
-        "ssrf":   ssrf_result.get("interesting", []),
+        "nuclei":          nuclei_result.get("confirmed", []),
+        "sqli_confirmed":  sqli_result.get("confirmed", []),
+        "sqli_candidates": sqli_result.get("candidates", []),
+        "ssrf_tested":     ssrf_result.get("tested", []),
+        "xss_confirmed":   xss_result.get("confirmed", []),
+        "api":             api_result.get("interesting", []),
+        "hosts":           hosts_result.get("priority", []),
     }
 
     print()
     critic_result = critic_check(combined, target)
-    print(f"  → Validated: {len(critic_result.get('validated',[]))}, "
-          f"filtered: {critic_result.get('filtered_count',0)}")
+    validated = critic_result.get("validated", [])
+    print(f"  → Validated         : {len(validated)}")
+    print(f"  → Filtered          : {critic_result.get('filtered_count',0)}")
+    print(f"  → Reason            : {critic_result.get('filter_reason','')}")
 
     analysis = {
         "target":          target,
         "nuclei_analysis": nuclei_result,
-        "idor_analysis":   idor_result,
+        "sqli_analysis":   sqli_result,
+        "ssrf_analysis":   ssrf_result,
+        "xss_analysis":    xss_result,
         "api_analysis":    api_result,
         "hosts_analysis":  hosts_result,
-        "ssrf_analysis":   ssrf_result,
         "critic":          critic_result,
     }
 
@@ -315,14 +345,13 @@ def main():
     analysis_path.write_text(json.dumps(analysis, indent=2))
     print(f"\n[*] Saved: {analysis_path}")
 
-    validated = critic_result.get("validated", [])
     if validated:
-        print(f"\n[*] Findings:")
+        print(f"\n[*] Findings to report:")
         for f in validated:
-            manual = " ⚠ verify manually" if f.get("needs_manual_verify") else ""
-            print(f"    [{f.get('severity','?')}] {f.get('type','?')} @ {f.get('url','?')}{manual}")
+            tag = " [FUZZER CONFIRMED]" if f.get("fuzzer_confirmed") else " ⚠ verify manually"
+            print(f"    [{f.get('severity','?')}] {f.get('type','?')} @ {f.get('url','?')}{tag}")
     else:
-        print("\n[*] No confirmed findings — check IDOR/API candidates manually")
+        print("\n[*] No confirmed findings — check SSRF OOB manually")
 
     print(f"\nNext: python3 recon_ranker.py {target} {out_dir}")
 
