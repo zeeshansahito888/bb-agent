@@ -197,3 +197,49 @@ info "Nuclei findings : $NUC_COUNT"
 info "Output          : $OUTDIR/"
 echo ""
 info "Next: python3 phase2_analyze.py $TARGET"
+
+# ── Shodan + SecurityTrails (runs after subfinder) ────────────────
+# Load config
+CONFIG="${BASH_SOURCE%/*}/config.env"
+[[ -f "$CONFIG" ]] && source "$CONFIG"
+
+# Shodan subdomain enum
+if [[ -n "${SHODAN_API_KEY:-}" ]]; then
+  info "Running Shodan..."
+  curl -s "https://api.shodan.io/dns/domain/${TARGET}?key=${SHODAN_API_KEY}" \
+    2>/dev/null \
+    | python3 -c "
+import sys,json
+try:
+  d=json.load(sys.stdin)
+  for s in d.get('subdomains',[]):
+    print(f'{s}.${TARGET}' if not s.endswith('${TARGET}') else s)
+except: pass
+" >> "$OUTDIR/subdomains.txt" 2>/dev/null || true
+  ok "Shodan done"
+else
+  warn "SHODAN_API_KEY not set in config.env"
+fi
+
+# SecurityTrails subdomain enum
+if [[ -n "${SECURITYTRAILS_API_KEY:-}" ]]; then
+  info "Running SecurityTrails..."
+  curl -s "https://api.securitytrails.com/v1/domain/${TARGET}/subdomains?apikey=${SECURITYTRAILS_API_KEY}" \
+    2>/dev/null \
+    | python3 -c "
+import sys,json
+try:
+  d=json.load(sys.stdin)
+  target='${TARGET}'
+  for s in d.get('subdomains',[]):
+    print(f'{s}.{target}')
+except: pass
+" >> "$OUTDIR/subdomains.txt" 2>/dev/null || true
+  ok "SecurityTrails done"
+else
+  warn "SECURITYTRAILS_API_KEY not set in config.env"
+fi
+
+# Deduplicate after adding new sources
+sort -u "$OUTDIR/subdomains.txt" -o "$OUTDIR/subdomains.txt"
+ok "Subdomains after Shodan+ST: $(wc -l < "$OUTDIR/subdomains.txt")"
