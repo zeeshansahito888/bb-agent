@@ -114,6 +114,9 @@ bash "${SCRIPT_DIR}/xss_fuzzer.sh" "$TARGET" "$RECON_DIR" || warn "XSS fuzzer fa
 bash "${SCRIPT_DIR}/sqli_fuzzer.sh" "$TARGET" "$RECON_DIR" || warn "SQLi fuzzer failed"
 
 # ── Phase 2 — Qwen Analysis ───────────────────────────────────────
+step "URL Clusterer — Cluster, Rank, Flag"
+python3 "${SCRIPT_DIR}/url_clusterer.py" "$TARGET" "$RECON_DIR" || warn "URL clusterer failed"
+
 step "Phase 2 — Qwen Analysis"
 python3 "${SCRIPT_DIR}/phase2_analyze.py" "$TARGET" "$RECON_DIR"
 
